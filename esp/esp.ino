@@ -1,3 +1,5 @@
+#include <LuaWrapper.h> // download https://github.com/fdu/ESP8266-Arduino-Lua and add as library (Read the readme there)
+
 //Original source code : http://enrique.latorres.org/2017/10/17/testing-lolin-nodemcu-v3-esp8266/
 //Download LoLin NodeMCU V3 ESP8266 Board for Arduino IDE (json) : http://arduino.esp8266.com/stable/package_esp8266com_index.json
 #include <ESP8266WiFi.h>
@@ -7,25 +9,16 @@
 
 int ledPin = 2; // Arduino standard is GPIO13 but lolin nodeMCU is 2 http://www.esp8266.com/viewtopic.php?f=26&t=13410#p61332
 
-WiFiServer server(42069);
-
-
 #include <FastLED.h>
-#define NUM_LEDS 60
-// data pin is D1
-#define DATA_PIN 5
+#define NUM_STRIPS 4
+#define NUM_LEDS_PER_STRIP 44
 
-CRGB leds[NUM_LEDS];
+CRGB leds[NUM_STRIPS][NUM_LEDS_PER_STRIP];
 
-void setup()
+LuaWrapper lua;
+
+void setupWifi()
 {
-    FastLED.addLeds<NEOPIXEL, DATA_PIN>(leds, NUM_LEDS);
-    
-    Serial.begin(115200);
-    delay(10);
-    pinMode(ledPin, OUTPUT);
-    digitalWrite(ledPin, HIGH);
-    // Connect to WiFi network
     Serial.println();
     Serial.println();
     Serial.print("Connecting to ");
@@ -36,95 +29,100 @@ void setup()
     
     while (WiFi.status() != WL_CONNECTED)
     {
-        delay(500);
+        digitalWrite(ledPin, LOW);
+        delay(100);
+        digitalWrite(ledPin, HIGH);
         Serial.print(".");
+        delay(100);
     }
     Serial.println("");
     Serial.println("WiFi connected");
-    
-    // Start the server
-    server.begin();
-    Serial.println("Server started");
-    
-    // Print the IP address
-    Serial.print("Use this URL to connect: ");
-    Serial.print("http://");
-    Serial.print(WiFi.localIP());
-    Serial.println("/");
-
 }
 
-void loop() {
-    // Check if a client has connected
-    WiFiClient client = server.available();
-    if (!client)
+void log(const char *str)
+{
+    Serial.println(str);
+}
+
+void lua_setColor(lua_State *lua_state)
+{
+    unsigned int stripIndex = luaL_checkinteger(lua_state, 1);
+    unsigned int ledIndex = luaL_checkinteger(lua_state, 2);
+    unsigned char r = luaL_checkinteger(lua_state, 3);
+    unsigned char g = luaL_checkinteger(lua_state, 4);
+    unsigned char b = luaL_checkinteger(lua_state, 5);
+
+    if (stripIndex >= NUM_STRIPS)
+    {
+        log("ERROR IN lua_setColor: stripIndex out of range");
         return;
-
-    // Wait until the client sends some data
-    Serial.println("new client");
-    while (!client.available())
-        delay(1);
-
-    // Read the first line of the request
-    String request = client.readStringUntil('r');
-    Serial.println(request);
-    client.flush();
-    
-    // Match the request
-    //Lolin nodeMCU has inverted the LED.
-    //Low level turns on the led
-    //while High level turns it off
-    
-    int value = HIGH; //initially off
-    if (request.indexOf("/LED=OFF") != -1) {
-        digitalWrite(ledPin, HIGH);
-        value = HIGH;
-
-        for (int i = 0; i < NUM_LEDS; i++)
-            leds[i] = CRGB::White;
-    
-        FastLED.show();
     }
-    if (request.indexOf("/LED=ON") != -1) {
-        digitalWrite(ledPin, LOW);
-        value = LOW;
+    if (ledIndex >= NUM_LEDS_PER_STRIP)
+    {
+        log("ERROR IN lua_setColor: ledIndex out of range");
+        return;
+    }
+    leds[stripIndex][ledIndex] = CRGB(r, g, b);
+}
 
-        for (int i = 0; i < NUM_LEDS; i++)
-            leds[i] = (i / 11) % 2 == 0 ? CRGB::Green : CRGB::Red;
+void lua_show(lua_State *lua_state)
+{
+    FastLED.show();
+}
+
+void setupLua()
+{
+    lua.Lua_register("set_color", (const lua_CFunction) &lua_setColor);
+    lua.Lua_register("show", (const lua_CFunction) &lua_show);
     
-        FastLED.show();
+}
+
+void setup()
+{
+    FastLED.addLeds<NEOPIXEL, 5>(leds[0], NUM_LEDS_PER_STRIP);
+    FastLED.addLeds<NEOPIXEL, 4>(leds[1], NUM_LEDS_PER_STRIP);
+    FastLED.addLeds<NEOPIXEL, 0>(leds[2], NUM_LEDS_PER_STRIP);
+    FastLED.addLeds<NEOPIXEL, 2>(leds[3], NUM_LEDS_PER_STRIP);
+
+    for (int i = 0; i < NUM_LEDS_PER_STRIP; i++)
+    {
+        // todo remove this hardcoded bullshit:
+        leds[0][i] = (i / 11) % 2 == 0 ? CRGB::Green : CRGB::Red;
+        leds[1][i] = (i / 11) % 2 == 0 ? CRGB::Red : CRGB::Blue;
+        leds[2][i] = (i / 11) % 2 == 0 ? CRGB::Blue : CRGB::Green;
+        leds[3][i] = (i / 11) % 2 == 0 ? CRGB::Green : CRGB::Red;
     }
+
+    FastLED.show();
     
-    // Set ledPin according to the request
-    //digitalWrite(ledPin, value);
-    
-    // Return the response
-    client.println("HTTP/1.1 200 OK");
-    client.println("Content-Type: text/html");
-    client.println("");
-    client.println("<!DOCTYPE HTML>");
-    client.println("<html>");
-    client.println("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">");
-    client.println("<link rel=\"stylesheet\" href=\"https://www.w3schools.com/w3css/4/w3.css\">");
-    client.println("<style>p.padding{padding-left: 0.4cm;}p{color: black;}cred{color: red}cgreen{color: green}</style>");
-    
-    client.print("<br><p class=\"padding\">On-Board Led is now : ");
-    //High=off
-    //Low=on
-    
-    if (value == HIGH) {
-        client.print("<cred>Off</cred>");
-    } else {
-        client.print("<cgreen>On<cgreen></p>");
+    Serial.begin(115200);
+
+    pinMode(ledPin, OUTPUT);
+    digitalWrite(ledPin, LOW);
+
+    setupWifi();
+    setupLua();
+
+    String script = String("print(\"haha\")");
+    Serial.println(lua.Lua_dostring(&script));
+}
+
+void loop()
+{
+    String script = "";
+    char c = 0;
+    Serial.println();
+    while (true) {
+        if (!Serial.available())
+            continue;
+        
+        c = Serial.read();
+        Serial.write(c);
+        script += c;
+        if (c == '\n') break;
     }
-    client.println("<div class=\"w3-container\">");
-    client.println("<br>");
-    client.println("<a href=\"/LED=ON\"\"><button class=\"w3-btn w3-ripple w3-green\">Turn On </button></a>");
-    client.println("<a href=\"/LED=OFF\"\"><button class=\"w3-btn w3-ripple w3-red\">Turn Off </button></a><br />");
-    client.println("</div>");
-    client.println("</html>");
-    
-    delay(1);
-    Serial.println("Client disonnected");
-    Serial.println("");
+    if(script.length() > 0) {
+        Serial.println();
+        log(lua.Lua_dostring(&script));
+    }
 }
