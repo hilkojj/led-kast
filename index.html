@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <title>Ledkast</title>
+    <style type="text/css" media="screen">
+        html,
+        body {
+            height: 100%;
+            padding: 0px;
+            margin: 0px;
+        }
+
+        #editor {
+            width: 100%;
+            height: calc(100% - 300px);
+        }
+        #log {
+            width: calc(100% - 10px);
+            resize: vertical;
+            min-height: 200px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <br>
+
+    Kast IP adres: <input id="ip-input" type="text" placeholder="0.0.0.0:42069"> <span id="socket-status"></span>
+
+    <br>
+    <br>
+
+    <div id="editor">local test = 5</div>
+    <textarea id="log"></textarea>
+
+    <script src="https://pagecdn.io/lib/ace/1.4.12/ace.min.js" type="text/javascript" charset="utf-8"></script>
+    <script src="https://pagecdn.io/lib/ace/1.4.12/ext-language_tools.min.js" type="text/javascript" charset="utf-8"></script>
+
+    <script>
+
+        ace.config.set("basePath", "https://pagecdn.io/lib/ace/1.4.12");
+
+        const editor = ace.edit("editor");
+        // editor.setTheme("ace/theme/monokai");
+        editor.session.setMode("ace/mode/lua");
+        editor.setOptions({
+            enableBasicAutocompletion: true,
+            enableLiveAutocompletion: true,
+            fontSize: 19
+        });
+
+        const statusSpan = document.getElementById("socket-status");
+
+        const okStatus = () => statusSpan.innerHTML = "<span style='color: green;'>Verbonden</span>"
+        const errorStatus = () => statusSpan.innerHTML = "<span style='color: red;'>Fout</span>"
+        const connectingStatus = () => statusSpan.innerHTML = "<span style='color: orange;'>Verbinden</span>"
+        const closedStatus = () => statusSpan.innerHTML = "<span style='color: grey;'>Geen connectie</span>"
+
+        closedStatus();
+
+        const logArea = document.getElementById("log");
+        const ipInput = document.getElementById("ip-input");
+        ipInput.value = location.hash.replace('#', '');
+
+        function log(msg) {
+            logArea.value += "\n" + msg;
+            logArea.scrollTop = logArea.scrollHeight;
+        }
+
+        function connect(ip) {
+
+            if (window["espSocket"] && window.espSocket.readyState < 2)
+                window.espSocket.close();
+
+            connectingStatus();
+
+            let socket = null;
+
+            try {
+                socket = window.espSocket = new WebSocket("ws://" + ip);
+            } catch (e) {
+                console.error(e);
+                closedStatus();
+                return;
+            }
+
+            socket.onopen = function (e) {
+                okStatus();
+                log("[WebSocket] Connected to " + ip);
+                location.hash = ip;
+            };
+
+            socket.onmessage = function (event) {
+                log("[KAST] " + event.data);
+            };
+
+            socket.onclose = function (event) {
+                if (event.wasClean) {
+                    closedStatus();
+                } else {
+                    // e.g. server process killed or network down
+                    // event.code is usually 1006 in this case
+                    errorStatus();
+                    console.error(event);
+                }
+            };
+
+            socket.onerror = function (error) {
+                console.error(error.message);
+                log("[WebSocket] [ERROR] " + error.message);
+                errorStatus();
+            };
+        }
+
+        connect(ipInput.value);
+        ipInput.addEventListener("keyup", function (event) {
+            event.preventDefault();
+            if (event.keyCode === 13)
+                connect(ipInput.value);
+        });
+    </script>
+</body>
+
+</html>
