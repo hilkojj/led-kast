@@ -31,6 +31,9 @@ std::map<String, String> scriptNameToID;
 
 #include <EEPROM.h>
 
+#include "soc/soc.h"
+#include "soc/rtc_cntl_reg.h"
+
 void setupWifi()
 {
     Serial.println();
@@ -40,7 +43,9 @@ void setupWifi()
 
     WiFi.setHostname("led-lampies-esp32");
     WiFi.begin(ssid, password);
-    
+
+    int animI = 0;
+    CRGB animColor = CRGB::Red;
     while (WiFi.status() != WL_CONNECTED)
     {
         digitalWrite(ledPin, LOW);
@@ -143,6 +148,40 @@ void removeScript(String &id)
     http.end();
 }
 
+String urlencode(String &str)
+{
+    String encodedString="";
+    char c;
+    char code0;
+    char code1;
+    char code2;
+    for (int i =0; i < str.length(); i++){
+      c=str.charAt(i);
+      if (c == ' '){
+        encodedString+= '+';
+      } else if (isalnum(c)){
+        encodedString+=c;
+      } else{
+        code1=(c & 0xf)+'0';
+        if ((c & 0xf) >9){
+            code1=(c & 0xf) - 10 + 'A';
+        }
+        c=(c>>4)&0xf;
+        code0=c+'0';
+        if (c > 9){
+            code0=c - 10 + 'A';
+        }
+        code2='\0';
+        encodedString+='%';
+        encodedString+=code0;
+        encodedString+=code1;
+        //encodedString+=code2;
+      }
+      yield();
+    }
+    return encodedString;
+}
+
 String uploadScript(String &name, String &script)
 {
     HTTPClient http;
@@ -152,7 +191,7 @@ String uploadScript(String &name, String &script)
         String("api_dev_key=") + pastebinDevKey +
         "&api_user_key=" + pastebinUserKey +
         "&api_paste_name=" + name +
-        "&api_paste_code=" + script +
+        "&api_paste_code=" + urlencode(script) +
         "&api_option=paste&api_paste_format=lua&api_paste_expire_date=N&api_paste_private=0";
 
     String id = "didnt-upload";
@@ -226,6 +265,10 @@ void webSocketEvent(uint8_t socket, WStype_t type, uint8_t *payload, size_t leng
                 log(("script:" + name + ",id:" + scriptNameToID[name]).c_str());
                 currentScriptID = scriptNameToID[name];
             }
+            else if (txt.startsWith("getscriptcode"))
+            {
+                webSocket.sendTXT(socket, ("scriptcode:" + script).c_str());
+            }
             break;
     }
 
@@ -272,27 +315,17 @@ void getScriptNamesAndIds()
 
 void setup()
 {
+    WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
                                                                 // label next to pin:
     FastLED.addLeds<NEOPIXEL, 16>(leds[0], NUM_LEDS_PER_STRIP); // RX2
     FastLED.addLeds<NEOPIXEL, 17>(leds[1], NUM_LEDS_PER_STRIP); // TX2
     FastLED.addLeds<NEOPIXEL, 18>(leds[2], NUM_LEDS_PER_STRIP); // D18 (unreadable)
     FastLED.addLeds<NEOPIXEL, 19>(leds[3], NUM_LEDS_PER_STRIP); // D19
-
-    for (int i = 0; i < NUM_LEDS_PER_STRIP; i++)
-    {
-        // todo remove this hardcoded bullshit:
-        leds[0][i] = (i / 11) % 2 == 0 ? CRGB::Green : CRGB::Red;
-        leds[1][i] = (i / 11) % 2 == 0 ? CRGB::Red : CRGB::Blue;
-        leds[2][i] = (i / 11) % 2 == 0 ? CRGB::Blue : CRGB::Green;
-        leds[3][i] = (i / 11) % 2 == 0 ? CRGB::Green : CRGB::Red;
-    }
-
-    FastLED.show();
     
     Serial.begin(115200);
 
     pinMode(ledPin, OUTPUT);
-    digitalWrite(ledPin, LOW);
+    digitalWrite(ledPin, HIGH);
 
     setupWifi();
     setupLua();

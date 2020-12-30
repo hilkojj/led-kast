@@ -25,6 +25,9 @@
             color: white;
             background: black;
         }
+        #script-select {
+            width: 200px;
+        }
     </style>
 </head>
 
@@ -37,17 +40,21 @@
     <br>
     <br>
 
-    Script: 
+    Script: <select id="script-select" onchange="scriptSelectChange()"></select>
+    <button onclick="newScript()">Nieuw script</button>
+    <button onclick="saveAndUploadScript()">Script opslaan</button>
 
     <br><br>
 
-    <div id="editor">local test = 5</div>
+    <div id="editor">-- Selecteer een script van de dropdown om te activeren en te bewerken.</div>
     <textarea id="log"></textarea>
 
     <script src="https://pagecdn.io/lib/ace/1.4.12/ace.min.js" type="text/javascript" charset="utf-8"></script>
     <script src="https://pagecdn.io/lib/ace/1.4.12/ext-language_tools.min.js" type="text/javascript" charset="utf-8"></script>
 
     <script>
+
+        let scriptNameToID = {};
 
         ace.config.set("basePath", "https://pagecdn.io/lib/ace/1.4.12");
 
@@ -58,6 +65,17 @@
             enableBasicAutocompletion: true,
             enableLiveAutocompletion: true,
             fontSize: 19
+        });
+        editor.setReadOnly(true);
+
+        let originalCode = "";
+        editor.commands.addCommand({
+            name: 'save&upload',
+            bindKey: {win: 'Ctrl-S',  mac: 'Command-S'},
+            exec: function(editor) {
+                saveAndUploadScript();
+            },
+            readOnly: false
         });
 
         const statusSpan = document.getElementById("socket-status");
@@ -77,6 +95,53 @@
             logArea.value += "\n" + msg;
             logArea.scrollTop = logArea.scrollHeight;
         }
+        
+        const scriptSelect = document.getElementById("script-select");
+    
+        function updateScriptSelect() {
+            const selected = scriptSelect.value;
+            scriptSelect.innerHTML = "";
+            for (let name of Object.keys(scriptNameToID))
+                scriptSelect.innerHTML += "<option value=\"" + name + "\">" + name + "</option>";
+            scriptSelect.value = selected;
+        }
+
+        let socket = null;
+
+        function scriptSelectChange() {
+
+            if ((originalCode != editor.getValue() && !editor.getReadOnly()) && !confirm("Je hebt onopgeslagen wijzigingen in het huidige script, die weggooien?"))
+                return;
+
+            editorChanged = false;
+            socket.send("setscript " + scriptSelect.value);
+            socket.send("getscriptcode");
+            editor.setValue("-- laden....");
+            editor.setReadOnly(true);
+        }
+
+        function saveAndUploadScript() {
+            socket.send("editscript " + scriptSelect.value + "\n" + editor.getValue());
+            originalCode = editor.getValue();
+        }
+
+        const defaultScript = `
+        
+set_color_multiple(0, 0, 43, 255, 0, 0)
+set_color_multiple(1, 0, 43, 0, 255, 0)
+set_color_multiple(2, 0, 43, 0, 0, 255)
+set_color_multiple(3, 0, 43, 255, 0, 0)
+show()
+delay(100)
+
+`
+
+        function newScript() {
+            const name = prompt("Script naam");
+            if (!name)
+                return;
+            socket.send("editscript " + name + defaultScript);
+        }
 
         function connect(ip) {
 
@@ -84,8 +149,6 @@
                 window.espSocket.close();
 
             connectingStatus();
-
-            let socket = null;
 
             try {
                 socket = window.espSocket = new WebSocket("ws://" + ip);
@@ -99,10 +162,34 @@
                 okStatus();
                 log("[WebSocket] Connected to " + ip);
                 location.hash = ip;
+                socket.send("scripts");
             };
 
             socket.onmessage = function (event) {
-                log("[KAST] " + event.data);
+                const txt = String(event.data);
+
+                let doLog = true;
+
+                if (txt.startsWith("script:")) {
+                    const splitted = txt.substr(7).split(",id:");
+                    const name = splitted[0];
+                    const id = splitted[1];
+                    scriptNameToID[name] = id;
+                    console.log(scriptNameToID);
+                    updateScriptSelect();
+                }
+                else if (txt.startsWith("scriptcode:")) {
+                    const code = txt.substr(11);
+                    editor.setValue(code);
+                    editor.setReadOnly(false);
+                    editor.getSession().setUndoManager(new ace.UndoManager());
+                    originalCode = code;
+                    doLog = false;
+                    log("[KAST received scriptcode] ...");
+                }
+
+                if (doLog)
+                    log("[KAST] " + txt);
             };
 
             socket.onclose = function (event) {
