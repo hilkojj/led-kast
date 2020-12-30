@@ -22,12 +22,14 @@ CRGB leds[NUM_STRIPS][NUM_LEDS_PER_STRIP];
 
 LuaWrapper lua;
 
-String script = "";
+String script = "", currentScriptID = "";
 
 #include "pastebin_api_keys.h"
 
 #include <map>
 std::map<String, String> scriptNameToID;
+
+#include <EEPROM.h>
 
 void setupWifi()
 {
@@ -205,6 +207,7 @@ void webSocketEvent(uint8_t socket, WStype_t type, uint8_t *payload, size_t leng
                 {
                     log(("Switching to script " + name).c_str());
                     script = downloadScript(scriptNameToID[name]);
+                    currentScriptID = scriptNameToID[name];
                 }
                 else
                     log(("Error: no script named '" + name + "' found!").c_str());
@@ -221,6 +224,7 @@ void webSocketEvent(uint8_t socket, WStype_t type, uint8_t *payload, size_t leng
                 log(("Uploading  " + name).c_str());
                 scriptNameToID[name] = uploadScript(name, script);
                 log(("script:" + name + ",id:" + scriptNameToID[name]).c_str());
+                currentScriptID = scriptNameToID[name];
             }
             break;
     }
@@ -297,6 +301,12 @@ void setup()
     webSocket.onEvent(webSocketEvent);
 
     getScriptNamesAndIds();
+    EEPROM.begin(8); // used to store last script's id. Assume Pastebin always generated ids of 8 chars long.
+    currentScriptID = "hahahaha";
+    for (int i = 0; i < 8; i++)
+        currentScriptID[i] = EEPROM.read(i);
+    log(("Downloading script from id that was saved in EEPROM: " + currentScriptID).c_str());
+    script = downloadScript(currentScriptID);
 }
 
 void loop()
@@ -308,5 +318,26 @@ void loop()
     {
         log(result.c_str());
         delay(100);
+    }
+
+    static String lastID = currentScriptID;
+    static unsigned long lastSaveTime = 0;
+    if (millis() - lastSaveTime > 10000 && lastID != currentScriptID)
+    {
+        lastSaveTime = millis();
+        lastID = currentScriptID;
+
+        log(("Saving script ID in EEPROM: " + currentScriptID).c_str());
+
+        if (currentScriptID.length() != 8)
+            log("halp, Pastebin generated an ID that is not 8 chars long?!");
+
+        else
+        {
+            for (int i = 0; i < 8; i++)
+                EEPROM.write(i, currentScriptID[i]);
+            EEPROM.commit();
+            log("Saving script ID in EEPROM done");
+        }
     }
 }
