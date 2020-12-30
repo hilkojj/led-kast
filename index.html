@@ -9,16 +9,21 @@
             height: 100%;
             padding: 0px;
             margin: 0px;
+            background-color: rgb(16, 8, 26);
+            color: white;
+            font-family: sans-serif;
         }
 
         #editor {
             width: 100%;
-            height: calc(100% - 300px);
+            height: calc(100% - 340px);
         }
         #log {
             width: calc(100% - 10px);
             resize: vertical;
             min-height: 200px;
+            color: white;
+            background: black;
         }
     </style>
 </head>
@@ -32,6 +37,10 @@
     <br>
     <br>
 
+    Script: 
+
+    <br><br>
+
     <div id="editor">local test = 5</div>
     <textarea id="log"></textarea>
 
@@ -43,7 +52,7 @@
         ace.config.set("basePath", "https://pagecdn.io/lib/ace/1.4.12");
 
         const editor = ace.edit("editor");
-        // editor.setTheme("ace/theme/monokai");
+        editor.setTheme("ace/theme/cobalt");
         editor.session.setMode("ace/mode/lua");
         editor.setOptions({
             enableBasicAutocompletion: true,
