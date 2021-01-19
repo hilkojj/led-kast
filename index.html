@@ -43,6 +43,7 @@
     Script: <select id="script-select" onchange="scriptSelectChange()"></select>
     <button onclick="newScript()">Nieuw script</button>
     <button onclick="saveAndUploadScript()">Script opslaan</button>
+    <button onclick="previewScript()">Script previewen</button>
 
     <br><br>
 
@@ -124,13 +125,16 @@
             socket.send("editscript " + scriptSelect.value + "\n" + editor.getValue());
             originalCode = editor.getValue();
         }
+        function previewScript() {
+            socket.send("previewscriptcode " + "\n" + editor.getValue());
+        }
 
         const defaultScript = `
         
-set_color_multiple(0, 0, 43, 255, 0, 0)
-set_color_multiple(1, 0, 43, 0, 255, 0)
-set_color_multiple(2, 0, 43, 0, 0, 255)
-set_color_multiple(3, 0, 43, 255, 0, 0)
+set_color(0, 0, 43, 255, 0, 0)
+set_color(1, 0, 43, 0, 255, 0)
+set_color(2, 0, 43, 0, 0, 255)
+set_color(3, 0, 43, 255, 0, 0)
 show()
 delay(100)
 

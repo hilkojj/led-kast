@@ -66,20 +66,6 @@ void log(const char *str)
         webSocket.sendTXT(socket, str);
 }
 
-void lua_setColor(lua_State *lua_state)
-{
-    unsigned int stripIndex = luaL_checkinteger(lua_state, 1);
-    unsigned int ledIndex = luaL_checkinteger(lua_state, 2);
-    unsigned char r = luaL_checkinteger(lua_state, 3);
-    unsigned char g = luaL_checkinteger(lua_state, 4);
-    unsigned char b = luaL_checkinteger(lua_state, 5);
-
-    if (stripIndex >= NUM_STRIPS || ledIndex >= NUM_LEDS_PER_STRIP)
-        return;
-
-    leds[stripIndex][ledIndex] = CRGB(r, g, b);
-}
-
 void lua_setColorMultiple(lua_State *lua_state)
 {
     unsigned int stripIndex = luaL_checkinteger(lua_state, 1);
@@ -89,12 +75,35 @@ void lua_setColorMultiple(lua_State *lua_state)
     unsigned char g = luaL_checkinteger(lua_state, 5);
     unsigned char b = luaL_checkinteger(lua_state, 6);
 
+    CRGB newColor(r, g, b);
+
     for (int i = ledIndex; i < ledIndex + nrOfLeds; i++)
     {
         if (stripIndex >= NUM_STRIPS || i >= NUM_LEDS_PER_STRIP)
             return;
 
-        leds[stripIndex][i] = CRGB(r, g, b);
+        leds[stripIndex][i] = newColor;
+    }
+}
+
+void lua_mixColorMultiple(lua_State *lua_state)
+{
+    unsigned int stripIndex = luaL_checkinteger(lua_state, 1);
+    unsigned int ledIndex = luaL_checkinteger(lua_state, 2);
+    unsigned int nrOfLeds = luaL_checkinteger(lua_state, 3);
+    unsigned char r = luaL_checkinteger(lua_state, 4);
+    unsigned char g = luaL_checkinteger(lua_state, 5);
+    unsigned char b = luaL_checkinteger(lua_state, 6);
+    float x = luaL_checknumber(lua_state, 7);
+
+    CRGB newColor(r, g, b);
+
+    for (int i = ledIndex; i < ledIndex + nrOfLeds; i++)
+    {
+        if (stripIndex >= NUM_STRIPS || i >= NUM_LEDS_PER_STRIP)
+            return;
+
+        leds[stripIndex][i] = leds[stripIndex][i].lerp16(newColor, x);
     }
 }
 
@@ -108,8 +117,8 @@ void lua_show(lua_State *lua_state)
 
 void setupLua()
 {
-    lua.Lua_register("set_color", (const lua_CFunction) &lua_setColor);
-    lua.Lua_register("set_color_multiple", (const lua_CFunction) &lua_setColorMultiple);
+    lua.Lua_register("set_color", (const lua_CFunction) &lua_setColorMultiple);
+    lua.Lua_register("mix_color", (const lua_CFunction) &lua_mixColorMultiple);
     lua.Lua_register("show", (const lua_CFunction) &lua_show);
     
 
@@ -268,6 +277,11 @@ void webSocketEvent(uint8_t socket, WStype_t type, uint8_t *payload, size_t leng
             else if (txt.startsWith("getscriptcode"))
             {
                 webSocket.sendTXT(socket, ("scriptcode:" + script).c_str());
+            }
+            else if (txt.startsWith("previewscriptcode "))
+            {
+                script = txt.substring(18);
+                log("Previewing new script code. Don't forget to actually save!!");
             }
             break;
     }
